@@ -1,5 +1,13 @@
-胖东来
-于东来
+任天堂
+索尼
+Switch
+PS5
+Steam
+
+纪录片
+综艺
+
+动画
 
 DeepSeek
 梁文锋
@@ -9,38 +17,11 @@ DeepSeek
 HarmonyOS
 任正非
 
-比亚迪
-王传福
-
-大疆
-DJI
-
-宇树
-王兴兴
-
-智元
-灵犀
-稚晖君
-彭志辉
-
 黑神话
 冯骥
 
-影之刃零
-梁其伟
-
-哪吒
-饺子
-杨宇
-!车
-!餐
-
-三体
-流浪地球
-刘慈欣
-郭帆
-
-申奥
+国产游戏
+独立游戏
 
 京东
 刘强东
@@ -51,9 +32,15 @@ bytedance
 
 特斯拉
 马斯克
+Grok
+xAI
 
 微软
 Microsoft
+
+Linux
+Ubuntu
+Debian
 
 英伟达
 NVIDIA
@@ -62,36 +49,37 @@ NVIDIA
 AMD
 
 谷歌
-google
-gemini
-deepmind
+Google
+Gemini
+DeepMind
 
-chatgpt
-openai
-sora
+ChatGPT
+OpenAI
+Sora
 
-claude
+Claude
 Anthropic
 
-iphone
-ipad
-mac
-ios
+iPhone
+iPad
+Mac
+iOS
 
-ai
-!gai
+AI
+!GAI
 人工智能
-
-自动驾驶
-
-机器人
+Agent
 
 国产
 中国
 
 美国
+欧洲
+欧盟
+
 日本
 韩国
+朝鲜
 
 芯片
 光刻机
@@ -99,11 +87,7 @@ ai
 科技
 
 核能
-
-水电站
-雅鲁藏布江
-
-新质生产力
+发电
 
 月球
 登月
@@ -111,3 +95,14 @@ ai
 宇宙
 飞船
 航空
+
+食贫道
+饼叔
+
+影视飓风
+Tim
+
+福建
+台湾
+
+政策
