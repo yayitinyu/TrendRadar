@@ -953,7 +953,10 @@ def matches_word_groups(
     if not word_groups:
         return True
 
-    title_lower = title.lower()
+    # 兼容非字符串标题
+    if title is None:
+        return False
+    title_lower = str(title).lower()
 
     # 过滤词检查
     if any(filter_word.lower() in title_lower for filter_word in filter_words):
@@ -1131,12 +1134,18 @@ def count_word_frequency(
             processed_titles[source_id] = {}
 
         for title, title_data in titles_data.items():
-            if title in processed_titles.get(source_id, {}):
+            original_title = title
+            title_text = "" if title is None else str(title)
+
+            if not title_text:
+                continue
+
+            if title_text in processed_titles.get(source_id, {}):
                 continue
 
             # 使用统一的匹配逻辑
             matches_frequency_words = matches_word_groups(
-                title, word_groups, filter_words
+                title_text, word_groups, filter_words
             )
 
             if not matches_frequency_words:
@@ -1153,7 +1162,7 @@ def count_word_frequency(
             source_mobile_url = title_data.get("mobileUrl", "")
 
             # 找到匹配的词组
-            title_lower = title.lower()
+            title_lower = title_text.lower()
             for group in word_groups:
                 required_words = group["required"]
                 normal_words = group["normal"]
@@ -1199,9 +1208,9 @@ def count_word_frequency(
                     mode == "current"
                     and title_info
                     and source_id in title_info
-                    and title in title_info[source_id]
+                    and (title_text in title_info[source_id] or original_title in title_info[source_id])
                 ):
-                    info = title_info[source_id][title]
+                    info = title_info[source_id].get(title_text) or title_info[source_id][original_title]
                     first_time = info.get("first_time", "")
                     last_time = info.get("last_time", "")
                     count_info = info.get("count", 1)
@@ -1212,9 +1221,9 @@ def count_word_frequency(
                 elif (
                     title_info
                     and source_id in title_info
-                    and title in title_info[source_id]
+                    and (title_text in title_info[source_id] or original_title in title_info[source_id])
                 ):
-                    info = title_info[source_id][title]
+                    info = title_info[source_id].get(title_text) or title_info[source_id][original_title]
                     first_time = info.get("first_time", "")
                     last_time = info.get("last_time", "")
                     count_info = info.get("count", 1)
@@ -1238,11 +1247,11 @@ def count_word_frequency(
                 elif new_titles and source_id in new_titles:
                     # 检查是否在新增列表中
                     new_titles_for_source = new_titles[source_id]
-                    is_new = title in new_titles_for_source
+                    is_new = title_text in new_titles_for_source or original_title in new_titles_for_source
 
                 word_stats[group_key]["titles"][source_id].append(
                     {
-                        "title": title,
+                        "title": title_text,
                         "source_name": source_name,
                         "first_time": first_time,
                         "last_time": last_time,
@@ -1258,7 +1267,7 @@ def count_word_frequency(
 
                 if source_id not in processed_titles:
                     processed_titles[source_id] = {}
-                processed_titles[source_id][title] = True
+                processed_titles[source_id][title_text] = True
 
                 break
 
