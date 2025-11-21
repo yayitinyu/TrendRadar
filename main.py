@@ -956,7 +956,14 @@ def matches_word_groups(
     # 兼容非字符串标题
     if title is None:
         return False
-    title_lower = str(title).lower()
+
+    try:
+        title_lower = str(title).lower()
+    except Exception:
+        return False
+
+    if not title_lower:
+        return False
 
     # 过滤词检查
     if any(filter_word.lower() in title_lower for filter_word in filter_words):
@@ -1376,7 +1383,14 @@ def prepare_report_data(
             for source_id, titles_data in new_titles.items():
                 filtered_titles = {}
                 for title, title_data in titles_data.items():
-                    if matches_word_groups(title, word_groups, filter_words):
+                    normalized_title = "" if title is None else str(title)
+
+                    if not normalized_title:
+                        continue
+
+                    if matches_word_groups(
+                        normalized_title, word_groups, filter_words
+                    ):
                         filtered_titles[title] = title_data
                 if filtered_titles:
                     filtered_new_titles[source_id] = filtered_titles
