@@ -20,7 +20,7 @@ import requests
 import yaml
 
 
-VERSION = "3.1.0"
+VERSION = "3.1.1"
 
 
 # === SMTP邮件配置 ===
@@ -527,7 +527,11 @@ class DataFetcher:
                     data = json.loads(response)
                     results[id_value] = {}
                     for index, item in enumerate(data.get("items", []), 1):
-                        title = item["title"]
+                        title = item.get("title")
+                        # 跳过无效标题（None、float、空字符串）
+                        if title is None or isinstance(title, float) or not str(title).strip():
+                            continue
+                        title = str(title).strip()
                         url = item.get("url", "")
                         mobile_url = item.get("mobileUrl", "")
 
@@ -949,21 +953,17 @@ def matches_word_groups(
     title: str, word_groups: List[Dict], filter_words: List[str]
 ) -> bool:
     """检查标题是否匹配词组规则"""
+    # 防御性类型检查：确保 title 是有效字符串
+    if not isinstance(title, str):
+        title = str(title) if title is not None else ""
+    if not title.strip():
+        return False
+
     # 如果没有配置词组，则匹配所有标题（支持显示全部新闻）
     if not word_groups:
         return True
 
-    # 兼容非字符串标题
-    if title is None:
-        return False
-
-    try:
-        title_lower = str(title).lower()
-    except Exception:
-        return False
-
-    if not title_lower:
-        return False
+    title_lower = title.lower()
 
     # 过滤词检查
     if any(filter_word.lower() in title_lower for filter_word in filter_words):
@@ -1141,18 +1141,12 @@ def count_word_frequency(
             processed_titles[source_id] = {}
 
         for title, title_data in titles_data.items():
-            original_title = title
-            title_text = "" if title is None else str(title)
-
-            if not title_text:
-                continue
-
-            if title_text in processed_titles.get(source_id, {}):
+            if title in processed_titles.get(source_id, {}):
                 continue
 
             # 使用统一的匹配逻辑
             matches_frequency_words = matches_word_groups(
-                title_text, word_groups, filter_words
+                title, word_groups, filter_words
             )
 
             if not matches_frequency_words:
@@ -1168,8 +1162,8 @@ def count_word_frequency(
             source_url = title_data.get("url", "")
             source_mobile_url = title_data.get("mobileUrl", "")
 
-            # 找到匹配的词组
-            title_lower = title_text.lower()
+            # 找到匹配的词组（防御性转换确保类型安全）
+            title_lower = str(title).lower() if not isinstance(title, str) else title.lower()
             for group in word_groups:
                 required_words = group["required"]
                 normal_words = group["normal"]
@@ -1215,9 +1209,9 @@ def count_word_frequency(
                     mode == "current"
                     and title_info
                     and source_id in title_info
-                    and (title_text in title_info[source_id] or original_title in title_info[source_id])
+                    and title in title_info[source_id]
                 ):
-                    info = title_info[source_id].get(title_text) or title_info[source_id][original_title]
+                    info = title_info[source_id][title]
                     first_time = info.get("first_time", "")
                     last_time = info.get("last_time", "")
                     count_info = info.get("count", 1)
@@ -1228,9 +1222,9 @@ def count_word_frequency(
                 elif (
                     title_info
                     and source_id in title_info
-                    and (title_text in title_info[source_id] or original_title in title_info[source_id])
+                    and title in title_info[source_id]
                 ):
-                    info = title_info[source_id].get(title_text) or title_info[source_id][original_title]
+                    info = title_info[source_id][title]
                     first_time = info.get("first_time", "")
                     last_time = info.get("last_time", "")
                     count_info = info.get("count", 1)
@@ -1254,11 +1248,11 @@ def count_word_frequency(
                 elif new_titles and source_id in new_titles:
                     # 检查是否在新增列表中
                     new_titles_for_source = new_titles[source_id]
-                    is_new = title_text in new_titles_for_source or original_title in new_titles_for_source
+                    is_new = title in new_titles_for_source
 
                 word_stats[group_key]["titles"][source_id].append(
                     {
-                        "title": title_text,
+                        "title": title,
                         "source_name": source_name,
                         "first_time": first_time,
                         "last_time": last_time,
@@ -1274,7 +1268,7 @@ def count_word_frequency(
 
                 if source_id not in processed_titles:
                     processed_titles[source_id] = {}
-                processed_titles[source_id][title_text] = True
+                processed_titles[source_id][title] = True
 
                 break
 
@@ -1383,14 +1377,7 @@ def prepare_report_data(
             for source_id, titles_data in new_titles.items():
                 filtered_titles = {}
                 for title, title_data in titles_data.items():
-                    normalized_title = "" if title is None else str(title)
-
-                    if not normalized_title:
-                        continue
-
-                    if matches_word_groups(
-                        normalized_title, word_groups, filter_words
-                    ):
+                    if matches_word_groups(title, word_groups, filter_words):
                         filtered_titles[title] = title_data
                 if filtered_titles:
                     filtered_new_titles[source_id] = filtered_titles
