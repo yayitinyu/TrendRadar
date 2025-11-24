@@ -20,7 +20,7 @@ import requests
 import yaml
 
 
-VERSION = "3.2.0"
+VERSION = "3.3.0"
 
 
 # === SMTP邮件配置 ===
@@ -50,6 +50,8 @@ SMTP_CONFIGS = {
     "sohu.com": {"server": "smtp.sohu.com", "port": 465, "encryption": "SSL"},
     # 天翼邮箱（使用 SSL）
     "189.cn": {"server": "smtp.189.cn", "port": 465, "encryption": "SSL"},
+    # 阿里云邮箱（使用 TLS）
+    "aliyun.com": {"server": "smtp.aliyun.com", "port": 465, "encryption": "TLS"},
 }
 
 
@@ -61,14 +63,8 @@ def load_config():
     if not Path(config_path).exists():
         raise FileNotFoundError(f"配置文件 {config_path} 不存在")
 
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            config_data = yaml.safe_load(f)
-    except yaml.YAMLError as exc:  # 捕获 YAML 解析错误，给出更明确的提示
-        raise ValueError(
-            f"配置文件 {config_path} 格式有误，请检查缩进或符号是否正确。\n"
-            f"原始错误：{exc}"
-        ) from exc
+    with open(config_path, "r", encoding="utf-8") as f:
+        config_data = yaml.safe_load(f)
 
     print(f"配置文件加载成功: {config_path}")
 
@@ -103,6 +99,7 @@ def load_config():
             "dingtalk_batch_size", 20000
         ),
         "FEISHU_BATCH_SIZE": config_data["notification"].get("feishu_batch_size", 29000),
+        "BARK_BATCH_SIZE": config_data["notification"].get("bark_batch_size", 3600),
         "BATCH_SEND_INTERVAL": config_data["notification"]["batch_send_interval"],
         "FEISHU_MESSAGE_SEPARATOR": config_data["notification"][
             "feishu_message_separator"
@@ -188,14 +185,21 @@ def load_config():
     ).strip() or webhooks.get("email_smtp_port", "")
 
     # ntfy配置
-    config["NTFY_SERVER_URL"] = os.environ.get(
-        "NTFY_SERVER_URL", "https://ntfy.sh"
-    ).strip() or webhooks.get("ntfy_server_url", "https://ntfy.sh")
+    config["NTFY_SERVER_URL"] = (
+        os.environ.get("NTFY_SERVER_URL", "").strip()
+        or webhooks.get("ntfy_server_url")
+        or "https://ntfy.sh"
+    )
     config["NTFY_TOPIC"] = os.environ.get("NTFY_TOPIC", "").strip() or webhooks.get(
         "ntfy_topic", ""
     )
     config["NTFY_TOKEN"] = os.environ.get("NTFY_TOKEN", "").strip() or webhooks.get(
         "ntfy_token", ""
+    )
+
+    # Bark配置
+    config["BARK_URL"] = os.environ.get("BARK_URL", "").strip() or webhooks.get(
+        "bark_url", ""
     )
 
     # 输出配置来源信息
@@ -222,6 +226,10 @@ def load_config():
     if config["NTFY_SERVER_URL"] and config["NTFY_TOPIC"]:
         server_source = "环境变量" if os.environ.get("NTFY_SERVER_URL") else "配置文件"
         notification_sources.append(f"ntfy({server_source})")
+
+    if config["BARK_URL"]:
+        bark_source = "环境变量" if os.environ.get("BARK_URL") else "配置文件"
+        notification_sources.append(f"Bark({bark_source})")
 
     if notification_sources:
         print(f"通知渠道配置来源: {', '.join(notification_sources)}")
@@ -987,17 +995,7 @@ def matches_word_groups(
     if not word_groups:
         return True
 
-    # 兼容非字符串标题
-    if title is None:
-        return False
-
-    try:
-        title_lower = str(title).lower()
-    except Exception:
-        return False
-
-    if not title_lower:
-        return False
+    title_lower = title.lower()
 
     # 过滤词检查
     if any(filter_word.lower() in title_lower for filter_word in filter_words):
@@ -1175,18 +1173,12 @@ def count_word_frequency(
             processed_titles[source_id] = {}
 
         for title, title_data in titles_data.items():
-            original_title = title
-            title_text = "" if title is None else str(title)
-
-            if not title_text:
-                continue
-
-            if title_text in processed_titles.get(source_id, {}):
+            if title in processed_titles.get(source_id, {}):
                 continue
 
             # 使用统一的匹配逻辑
             matches_frequency_words = matches_word_groups(
-                title_text, word_groups, filter_words
+                title, word_groups, filter_words
             )
 
             if not matches_frequency_words:
@@ -1202,8 +1194,8 @@ def count_word_frequency(
             source_url = title_data.get("url", "")
             source_mobile_url = title_data.get("mobileUrl", "")
 
-            # 找到匹配的词组
-            title_lower = title_text.lower()
+            # 找到匹配的词组（防御性转换确保类型安全）
+            title_lower = str(title).lower() if not isinstance(title, str) else title.lower()
             for group in word_groups:
                 required_words = group["required"]
                 normal_words = group["normal"]
@@ -1249,9 +1241,9 @@ def count_word_frequency(
                     mode == "current"
                     and title_info
                     and source_id in title_info
-                    and (title_text in title_info[source_id] or original_title in title_info[source_id])
+                    and title in title_info[source_id]
                 ):
-                    info = title_info[source_id].get(title_text) or title_info[source_id][original_title]
+                    info = title_info[source_id][title]
                     first_time = info.get("first_time", "")
                     last_time = info.get("last_time", "")
                     count_info = info.get("count", 1)
@@ -1262,9 +1254,9 @@ def count_word_frequency(
                 elif (
                     title_info
                     and source_id in title_info
-                    and (title_text in title_info[source_id] or original_title in title_info[source_id])
+                    and title in title_info[source_id]
                 ):
-                    info = title_info[source_id].get(title_text) or title_info[source_id][original_title]
+                    info = title_info[source_id][title]
                     first_time = info.get("first_time", "")
                     last_time = info.get("last_time", "")
                     count_info = info.get("count", 1)
@@ -1288,11 +1280,11 @@ def count_word_frequency(
                 elif new_titles and source_id in new_titles:
                     # 检查是否在新增列表中
                     new_titles_for_source = new_titles[source_id]
-                    is_new = title_text in new_titles_for_source or original_title in new_titles_for_source
+                    is_new = title in new_titles_for_source
 
                 word_stats[group_key]["titles"][source_id].append(
                     {
-                        "title": title_text,
+                        "title": title,
                         "source_name": source_name,
                         "first_time": first_time,
                         "last_time": last_time,
@@ -1308,7 +1300,7 @@ def count_word_frequency(
 
                 if source_id not in processed_titles:
                     processed_titles[source_id] = {}
-                processed_titles[source_id][title_text] = True
+                processed_titles[source_id][title] = True
 
                 break
 
@@ -1442,14 +1434,7 @@ def prepare_report_data(
             for source_id, titles_data in new_titles.items():
                 filtered_titles = {}
                 for title, title_data in titles_data.items():
-                    normalized_title = "" if title is None else str(title)
-
-                    if not normalized_title:
-                        continue
-
-                    if matches_word_groups(
-                        normalized_title, word_groups, filter_words
-                    ):
+                    if matches_word_groups(title, word_groups, filter_words):
                         filtered_titles[title] = title_data
                 if filtered_titles:
                     filtered_new_titles[source_id] = filtered_titles
@@ -3426,6 +3411,7 @@ def send_to_notifications(
     ntfy_server_url = CONFIG["NTFY_SERVER_URL"]
     ntfy_topic = CONFIG["NTFY_TOPIC"]
     ntfy_token = CONFIG.get("NTFY_TOKEN", "")
+    bark_url = CONFIG["BARK_URL"]
 
     update_info_to_send = update_info if CONFIG["SHOW_VERSION_UPDATE"] else None
 
@@ -3465,6 +3451,17 @@ def send_to_notifications(
             ntfy_server_url,
             ntfy_topic,
             ntfy_token,
+            report_data,
+            report_type,
+            update_info_to_send,
+            proxy_url,
+            mode,
+        )
+
+    # 发送到 Bark
+    if bark_url:
+        results["bark"] = send_to_bark(
+            bark_url,
             report_data,
             report_type,
             update_info_to_send,
@@ -4158,6 +4155,116 @@ def send_to_ntfy(
         return False
 
 
+def send_to_bark(
+    bark_url: str,
+    report_data: Dict,
+    report_type: str,
+    update_info: Optional[Dict] = None,
+    proxy_url: Optional[str] = None,
+    mode: str = "daily",
+) -> bool:
+    """发送到Bark（支持分批发送，使用纯文本格式）"""
+    proxies = None
+    if proxy_url:
+        proxies = {"http": proxy_url, "https": proxy_url}
+
+    # 获取分批内容（Bark 限制为 3600 字节以避免 413 错误）
+    batches = split_content_into_batches(
+        report_data, "wework", update_info, max_bytes=CONFIG["BARK_BATCH_SIZE"], mode=mode
+    )
+
+    total_batches = len(batches)
+    print(f"Bark消息分为 {total_batches} 批次发送 [{report_type}]")
+
+    # 反转批次顺序，使得在Bark客户端显示时顺序正确
+    # Bark显示最新消息在上面，所以我们从最后一批开始推送
+    reversed_batches = list(reversed(batches))
+
+    print(f"Bark将按反向顺序推送（最后批次先推送），确保客户端显示顺序正确")
+
+    # 逐批发送（反向顺序）
+    success_count = 0
+    for idx, batch_content in enumerate(reversed_batches, 1):
+        # 计算正确的批次编号（用户视角的编号）
+        actual_batch_num = total_batches - idx + 1
+
+        # 添加批次标识（使用正确的批次编号）
+        if total_batches > 1:
+            batch_header = f"[第 {actual_batch_num}/{total_batches} 批次]\n\n"
+            batch_content = batch_header + batch_content
+
+        # 清理 markdown 语法（Bark 不支持 markdown）
+        plain_content = strip_markdown(batch_content)
+
+        batch_size = len(plain_content.encode("utf-8"))
+        print(
+            f"发送Bark第 {actual_batch_num}/{total_batches} 批次（推送顺序: {idx}/{total_batches}），大小：{batch_size} 字节 [{report_type}]"
+        )
+
+        # 检查消息大小（Bark使用APNs，限制4KB）
+        if batch_size > 4096:
+            print(
+                f"警告：Bark第 {actual_batch_num}/{total_batches} 批次消息过大（{batch_size} 字节），可能被拒绝"
+            )
+
+        # 构建JSON payload
+        payload = {
+            "title": report_type,
+            "body": plain_content,
+            "sound": "default",
+            "group": "TrendRadar",
+        }
+
+        try:
+            response = requests.post(
+                bark_url,
+                json=payload,
+                proxies=proxies,
+                timeout=30,
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("code") == 200:
+                    print(f"Bark第 {actual_batch_num}/{total_batches} 批次发送成功 [{report_type}]")
+                    success_count += 1
+                    # 批次间间隔
+                    if idx < total_batches:
+                        time.sleep(CONFIG["BATCH_SEND_INTERVAL"])
+                else:
+                    print(
+                        f"Bark第 {actual_batch_num}/{total_batches} 批次发送失败 [{report_type}]，错误：{result.get('message', '未知错误')}"
+                    )
+            else:
+                print(
+                    f"Bark第 {actual_batch_num}/{total_batches} 批次发送失败 [{report_type}]，状态码：{response.status_code}"
+                )
+                try:
+                    print(f"错误详情：{response.text}")
+                except:
+                    pass
+
+        except requests.exceptions.ConnectTimeout:
+            print(f"Bark第 {actual_batch_num}/{total_batches} 批次连接超时 [{report_type}]")
+        except requests.exceptions.ReadTimeout:
+            print(f"Bark第 {actual_batch_num}/{total_batches} 批次读取超时 [{report_type}]")
+        except requests.exceptions.ConnectionError as e:
+            print(f"Bark第 {actual_batch_num}/{total_batches} 批次连接错误 [{report_type}]：{e}")
+        except Exception as e:
+            print(f"Bark第 {actual_batch_num}/{total_batches} 批次发送异常 [{report_type}]：{e}")
+
+    # 判断整体发送是否成功
+    if success_count == total_batches:
+        print(f"Bark所有 {total_batches} 批次发送完成 [{report_type}]")
+        return True
+    elif success_count > 0:
+        print(f"Bark部分发送成功：{success_count}/{total_batches} 批次 [{report_type}]")
+        return True  # 部分成功也视为成功
+    else:
+        print(f"Bark发送完全失败 [{report_type}]")
+        return False
+
+
 # === 主分析器 ===
 class NewsAnalyzer:
     """新闻分析器"""
@@ -4270,6 +4377,7 @@ class NewsAnalyzer:
                     and CONFIG["EMAIL_TO"]
                 ),
                 (CONFIG["NTFY_SERVER_URL"] and CONFIG["NTFY_TOPIC"]),
+                CONFIG["BARK_URL"],
             ]
         )
 
